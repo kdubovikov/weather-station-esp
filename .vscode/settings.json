@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "dns.h": "c",
+        "netdb.h": "c",
+        "tcpip_adapter.h": "c",
+        "mqtt_client.h": "c",
+        "queue": "c",
+        "stack": "c",
+        "random": "c"
+    }
+}
