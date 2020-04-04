@@ -63,6 +63,12 @@
 static const char *TAG = "weather_station";
 static EventGroupHandle_t s_connect_event_group;
 
+static void create_weather_msg(char* msg, float temp, float pressure, float altitude, float humidity) {
+    sprintf(msg, 
+            "{\"temp\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"humidity\":%.2f}", 
+            temp, pressure, altitude, humidity);
+}
+
 // MQTT
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 {
@@ -72,7 +78,10 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            msg_id = esp_mqtt_client_publish(client, "weather", "hi there, I am ESP32 ^_^", 0, 1, 0);
+            char msg[90];
+            create_weather_msg(msg, 0., 1., 2., 3.);
+            ESP_LOGI(TAG, "Sending message: %s", msg);
+            msg_id = esp_mqtt_client_publish(client, "weather", msg, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
             break;
         case MQTT_EVENT_DISCONNECTED:
