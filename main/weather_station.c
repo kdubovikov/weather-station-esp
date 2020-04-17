@@ -9,6 +9,7 @@
 #include "esp_event.h"
 #include "esp_system.h"
 #include "esp_err.h"
+#include "esp_sleep.h"
 #include "nvs_flash.h"
 #include "tcpip_adapter.h"
 
@@ -74,7 +75,6 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 {
     esp_mqtt_client_handle_t client = event->client;
     int msg_id;
-    // your_context_t *context = event->context;
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
@@ -83,12 +83,19 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             ESP_LOGI(TAG, "Sending message: %s", msg);
             msg_id = esp_mqtt_client_publish(client, "weather", msg, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+
+            const float SLEEP_TIME = 2 * 1e6;
+            ESP_LOGI(TAG, "going to deep sleep for %.1f", SLEEP_TIME / 1e6);
+            ESP_ERROR_CHECK(esp_wifi_stop());
+            esp_deep_sleep(SLEEP_TIME);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
             break;
+        case MQTT_EVENT_ERROR:
+            ESP_LOGE(TAG, "MQTT connection error: %d", event->error_handle->connect_return_code);
         default:
-            ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+            ESP_LOGI(TAG, "MQTT recieved event id:%d", event->event_id);
             break;
     }
     return ESP_OK;
@@ -101,9 +108,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 static void mqtt_app_start(void)
 {
+    ESP_LOGI(TAG, "Connecting to MQTT server at %s", CONFIG_BROKER_URL);
     esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = CONFIG_BROKER_URL,
+        .uri = CONFIG_BROKER_URL 
     };
+
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, client);
     esp_mqtt_client_start(client);
@@ -121,8 +130,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip: %s", ip4addr_ntoa(&event->ip_info.ip));
-        // ESP_LOGI(TAG, "sending http request");
-        // xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
         xEventGroupSetBits(s_connect_event_group, CONNECTED_BITS);
     }
 }
@@ -170,4 +177,5 @@ void app_main()
 
     wifi_connect_blocking();
     mqtt_app_start();
+
 }

@@ -6,6 +6,7 @@
         "mqtt_client.h": "c",
         "queue": "c",
         "stack": "c",
-        "random": "c"
+        "random": "c",
+        "sys.h": "c"
     }
 }
