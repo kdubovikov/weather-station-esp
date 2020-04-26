@@ -21,7 +21,8 @@
 
 #include "mqtt_client.h"
 
-#include "bme280.h"
+// #include "bme280.h"
+#include "bmp280.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 
@@ -69,8 +70,8 @@
 #define TAG_BME280 "BME280"
 #define I2C_MASTER_ACK 0
 #define I2C_MASTER_NACK 1
-#define SDA_PIN GPIO_NUM_27
-#define SCL_PIN GPIO_NUM_26
+#define SDA_PIN GPIO_NUM_21
+#define SCL_PIN GPIO_NUM_22
 
 static const char *TAG = "weather_station";
 static EventGroupHandle_t s_connect_event_group;
@@ -186,11 +187,11 @@ void i2c_master_init()
 		.scl_pullup_en = GPIO_PULLUP_ENABLE,
 		.master.clk_speed = 1000000
 	};
-	i2c_param_config(I2C_NUM_0, &i2c_config);
-	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+	ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_config));
+	ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
 }
 
-s8_t BME280_I2C_bus_write(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u8_t cnt)
+s8_t BME280_I2C_bus_write(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u16_t cnt)
 {
 	s32_t iError = 0;
 
@@ -204,7 +205,7 @@ s8_t BME280_I2C_bus_write(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u8_t cnt
 	i2c_master_write(cmd, reg_data, cnt, true);
 	i2c_master_stop(cmd);
 
-	espRc = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
+	espRc = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10 / portTICK_PERIOD_MS);
 	if (espRc == ESP_OK) {
 		iError = 0;
 	} else {
@@ -215,7 +216,7 @@ s8_t BME280_I2C_bus_write(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u8_t cnt
 	return (s8_t)iError;
 }
 
-s8_t BME280_I2C_bus_read(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u8_t cnt)
+s8_t BME280_I2C_bus_read(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u16_t cnt)
 {
 	s32_t iError = 0;
 	esp_err_t espRc;
@@ -300,99 +301,249 @@ void task_bme280_normal_mode(void *ignore)
 	vTaskDelete(NULL);
 }
 */
+// void print_sensor_data(struct bme80_data *comp_data) {
+// #ifdef BME280_FLOAT_ENABLE
+//         printf("FLOAT %0.2f, %0.2f, %0.2f\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
+// #else
+//         printf("INT %ld, %ld, %ld\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
+// #endif
+// }
 
-void print_sensor_data(struct bme280_data *comp_data) {
-#ifdef BME280_FLOAT_ENABLE
-        printf("FLOAT %0.2f, %0.2f, %0.2f\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
-#else
-        printf("INT %ld, %ld, %ld\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
-#endif
-}
+// void stream_sensor_data_normal_mode() {
+// 	struct bme280_dev dev;
+// 	int8_t rslt = BME280_OK;
 
-void stream_sensor_data_normal_mode() {
-	struct bme280_dev dev;
-	int8_t rslt = BME280_OK;
+// 	dev.dev_id = BME280_I2C_ADDR_PRIM;
+// 	dev.intf = BME280_I2C_INTF;
+// 	dev.read = BME280_I2C_bus_read;
+// 	dev.write = BME280_I2C_bus_write;
+// 	dev.delay_ms = BME280_delay_msek;
 
-	dev.dev_id = BME280_I2C_ADDR_PRIM;
-	dev.intf = BME280_I2C_INTF;
-	dev.read = BME280_I2C_bus_read;
-	dev.write = BME280_I2C_bus_write;
-	dev.delay_ms = BME280_delay_msek;
+// 	rslt = bme280_init(&dev);
 
-	rslt = bme280_init(&dev);
+// 	uint8_t settings_sel;
+// 	struct bme280_data comp_data;
 
-	uint8_t settings_sel;
-	struct bme280_data comp_data;
+// 	/* Recommended mode of operation: Indoor navigation */
+// 	dev.settings.osr_h = BME280_OVERSAMPLING_1X;
+// 	dev.settings.osr_p = BME280_OVERSAMPLING_16X;
+// 	dev.settings.osr_t = BME280_OVERSAMPLING_2X;
+// 	dev.settings.filter = BME280_FILTER_COEFF_16;
+// 	dev.settings.standby_time = BME280_STANDBY_TIME_1000_MS;
 
-	/* Recommended mode of operation: Indoor navigation */
-	dev.settings.osr_h = BME280_OVERSAMPLING_1X;
-	dev.settings.osr_p = BME280_OVERSAMPLING_16X;
-	dev.settings.osr_t = BME280_OVERSAMPLING_2X;
-	dev.settings.filter = BME280_FILTER_COEFF_16;
-	dev.settings.standby_time = BME280_STANDBY_TIME_1000_MS;
+// 	settings_sel = BME280_OSR_PRESS_SEL;
+// 	settings_sel |= BME280_OSR_TEMP_SEL;
+// 	settings_sel |= BME280_OSR_HUM_SEL;
+// 	settings_sel |= BME280_STANDBY_SEL;
+// 	settings_sel |= BME280_FILTER_SEL;
+// 	rslt = bme280_set_sensor_settings(settings_sel, &dev);
+// 	rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, &dev);
 
-	settings_sel = BME280_OSR_PRESS_SEL;
-	settings_sel |= BME280_OSR_TEMP_SEL;
-	settings_sel |= BME280_OSR_HUM_SEL;
-	settings_sel |= BME280_STANDBY_SEL;
-	settings_sel |= BME280_FILTER_SEL;
-	rslt = bme280_set_sensor_settings(settings_sel, &dev);
-	rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, &dev);
+// 	printf("Temperature, Pressure, Humidity\r\n");
+// 	while (1) {
+// 		/* Delay while the sensor completes a measurement */
+// 		dev.delay_ms(10);
+// 		rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, &dev);
+// 		print_sensor_data(&comp_data);
+// 	}
 
-	printf("Temperature, Pressure, Humidity\r\n");
-	while (1) {
-		/* Delay while the sensor completes a measurement */
-		dev.delay_ms(10);
-		rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, &dev);
-		print_sensor_data(&comp_data);
-	}
+// 	vTaskDelete(NULL);
+// }
 
-	vTaskDelete(NULL);
-}
+// void stream_sensor_data_forced_mode()
+// {
+// 	struct bme280_dev dev;
+// 	int8_t rslt = BME280_OK;
 
-void stream_sensor_data_forced_mode()
-{
-	struct bme280_dev dev;
-	int8_t rslt = BME280_OK;
+// 	dev.dev_id = BME280_I2C_ADDR_PRIM;
+// 	dev.intf = BME280_I2C_INTF;
+// 	dev.read = BME280_I2C_bus_read;
+// 	dev.write = BME280_I2C_bus_write;
+// 	dev.delay_ms = BME280_delay_msek;
 
-	dev.dev_id = BME280_I2C_ADDR_PRIM;
-	dev.intf = BME280_I2C_INTF;
-	dev.read = BME280_I2C_bus_read;
-	dev.write = BME280_I2C_bus_write;
-	dev.delay_ms = BME280_delay_msek;
+// 	rslt = bme280_init(&dev);
+//     uint8_t settings_sel;
+// 	uint32_t req_delay;
+//     struct bme280_data comp_data;
 
-	rslt = bme280_init(&dev);
-    uint8_t settings_sel;
-	uint32_t req_delay;
-    struct bme280_data comp_data;
+//     /* Recommended mode of operation: Indoor navigation */
+//     dev.settings.osr_h = BME280_OVERSAMPLING_1X;
+//     dev.settings.osr_p = BME280_OVERSAMPLING_16X;
+//     dev.settings.osr_t = BME280_OVERSAMPLING_2X;
+//     dev.settings.filter = BME280_FILTER_COEFF_16;
 
-    /* Recommended mode of operation: Indoor navigation */
-    dev.settings.osr_h = BME280_OVERSAMPLING_1X;
-    dev.settings.osr_p = BME280_OVERSAMPLING_16X;
-    dev.settings.osr_t = BME280_OVERSAMPLING_2X;
-    dev.settings.filter = BME280_FILTER_COEFF_16;
+//     settings_sel = BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_FILTER_SEL;
 
-    settings_sel = BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_FILTER_SEL;
-
-    rslt = bme280_set_sensor_settings(settings_sel, &dev);
+//     rslt = bme280_set_sensor_settings(settings_sel, &dev);
 	
-	/*Calculate the minimum delay required between consecutive measurement based upon the sensor enabled
-     *  and the oversampling configuration. */
-    req_delay = bme280_cal_meas_delay(&dev.settings);
+// 	/*Calculate the minimum delay required between consecutive measurement based upon the sensor enabled
+//      *  and the oversampling configuration. */
+//     req_delay = bme280_cal_meas_delay(&dev.settings);
 
-    printf("Temperature, Pressure, Humidity\r\n");
-    /* Continuously stream sensor data */
-    while (1) {
-        rslt = bme280_set_sensor_mode(BME280_FORCED_MODE, &dev);
-        /* Wait for the measurement to complete and print data @25Hz */
-        dev.delay_ms(req_delay);
-        rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, &dev);
-        print_sensor_data(&comp_data);
+//     printf("Temperature, Pressure, Humidity\r\n");
+//     /* Continuously stream sensor data */
+//     while (1) {
+//         rslt = bme280_set_sensor_mode(BME280_FORCED_MODE, &dev);
+//         /* Wait for the measurement to complete and print data @25Hz */
+//         dev.delay_ms(req_delay);
+//         rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, &dev);
+//         print_sensor_data(&comp_data);
+//     }
+
+// 	vTaskDelete(NULL);
+// }
+
+
+/*!
+ *  @brief Prints the execution status of the APIs.
+ *
+ *  @param[in] api_name : name of the API whose execution status has to be printed.
+ *  @param[in] rslt     : error code returned by the API whose execution status has to be printed.
+ *
+ *  @return void.
+ */
+void print_rslt(const char api_name[], int8_t rslt)
+{
+    if (rslt != BMP280_OK)
+    {
+        printf("%s\t", api_name);
+        if (rslt == BMP280_E_NULL_PTR)
+        {
+            printf("Error [%d] : Null pointer error\r\n", rslt);
+        }
+        else if (rslt == BMP280_E_COMM_FAIL)
+        {
+            printf("Error [%d] : Bus communication failed\r\n", rslt);
+        }
+        else if (rslt == BMP280_E_IMPLAUS_TEMP)
+        {
+            printf("Error [%d] : Invalid Temperature\r\n", rslt);
+        }
+        else if (rslt == BMP280_E_DEV_NOT_FOUND)
+        {
+            printf("Error [%d] : Device not found\r\n", rslt);
+        }
+        else
+        {
+            /* For more error codes refer "*_defs.h" */
+            printf("Error [%d] : Unknown error code\r\n", rslt);
+        }
+    }
+}
+
+void stream_sensor_data() {
+	int8_t rslt;
+    struct bmp280_dev bmp;
+    struct bmp280_config conf;
+    struct bmp280_uncomp_data ucomp_data;
+    int32_t temp32;
+    double temp;
+
+    /* Map the delay function pointer with the function responsible for implementing the delay */
+    bmp.delay_ms = BME280_delay_msek;
+
+    /* Assign device I2C address based on the status of SDO pin (GND for PRIMARY(0x76) & VDD for SECONDARY(0x77)) */
+    bmp.dev_id = BMP280_I2C_ADDR_PRIM;
+
+    /* Select the interface mode as I2C */
+    bmp.intf = BMP280_I2C_INTF;
+
+    /* Map the I2C read & write function pointer with the functions responsible for I2C bus transfer */
+    bmp.read = BME280_I2C_bus_read;
+    bmp.write = BME280_I2C_bus_write;
+
+    /* To enable SPI interface: comment the above 4 lines and uncomment the below 4 lines */
+
+    /*
+     * bmp.dev_id = 0;
+     * bmp.read = spi_reg_read;
+     * bmp.write = spi_reg_write;
+     * bmp.intf = BMP280_SPI_INTF;
+     */
+    rslt = bmp280_init(&bmp);
+    print_rslt(" bmp280_init status", rslt);
+
+    /* Always read the current settings before writing, especially when
+     * all the configuration is not modified
+     */
+    rslt = bmp280_get_config(&conf, &bmp);
+    print_rslt(" bmp280_get_config status", rslt);
+
+    /* configuring the temperature oversampling, filter coefficient and output data rate */
+    /* Overwrite the desired settings */
+    conf.filter = BMP280_FILTER_COEFF_2;
+
+    /* Temperature oversampling set at 4x */
+    conf.os_temp = BMP280_OS_4X;
+
+    /* Pressure over sampling none (disabling pressure measurement) */
+    conf.os_pres = BMP280_OS_NONE;
+
+    /* Setting the output data rate as 1HZ(1000ms) */
+    conf.odr = BMP280_ODR_1000_MS;
+    rslt = bmp280_set_config(&conf, &bmp);
+    print_rslt(" bmp280_set_config status", rslt);
+
+    /* Always set the power mode after setting the configuration */
+    rslt = bmp280_set_power_mode(BMP280_NORMAL_MODE, &bmp);
+    print_rslt(" bmp280_set_power_mode status", rslt);
+    while (1)
+    {
+        /* Reading the raw data from sensor */
+        rslt = bmp280_get_uncomp_data(&ucomp_data, &bmp);
+
+        /* Getting the 32 bit compensated temperature */
+        rslt = bmp280_get_comp_temp_32bit(&temp32, ucomp_data.uncomp_temp, &bmp);
+
+        /* Getting the compensated temperature as floating point value */
+        rslt = bmp280_get_comp_temp_double(&temp, ucomp_data.uncomp_temp, &bmp);
+        printf("UT: %d, T32: %d, T: %f \r\n", ucomp_data.uncomp_temp, temp32, temp);
+
+        /* Sleep time between measurements = BMP280_ODR_1000_MS */
+        bmp.delay_ms(1000);
     }
 
 	vTaskDelete(NULL);
 }
 
+void task_i2cscanner(void *ignore) {
+	ESP_LOGD("i2c_scanner", ">> i2cScanner");
+	i2c_config_t conf;
+	conf.mode = I2C_MODE_MASTER;
+	conf.sda_io_num = SDA_PIN;
+	conf.scl_io_num = SCL_PIN;
+	conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+	conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+	conf.master.clk_speed = 100000;
+	i2c_param_config(I2C_NUM_0, &conf);
+
+	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+
+	int i;
+	esp_err_t espRc;
+	printf("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+	printf("00:         ");
+	for (i=3; i< 0x78; i++) {
+		i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+		i2c_master_start(cmd);
+		i2c_master_write_byte(cmd, (i << 1) | I2C_MASTER_WRITE, 1 /* expect ack */);
+		i2c_master_stop(cmd);
+
+		espRc = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
+		if (i%16 == 0) {
+			printf("\n%.2x:", i);
+		}
+		if (espRc == 0) {
+			printf(" %.2x", i);
+		} else {
+			printf(" --");
+		}
+		//ESP_LOGD(tag, "i=%d, rc=%d (0x%x)", i, espRc, espRc);
+		i2c_cmd_link_delete(cmd);
+	}
+	printf("\n");
+	vTaskDelete(NULL);
+}
 
 void app_main()
 {
@@ -411,5 +562,6 @@ void app_main()
 
 
 	TaskHandle_t xHandle = NULL;
-	xTaskCreate(stream_sensor_data_forced_mode, "stream_sensor_data", 2048, NULL, 6, &xHandle);
+	xTaskCreate(stream_sensor_data, "stream_sensor_data", 2048, NULL, 6, &xHandle);
+	// xTaskCreate(task_i2cscanner, "i2c_scanner", 2048, NULL, 6, NULL);
 }
