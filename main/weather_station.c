@@ -21,10 +21,15 @@
 
 #include "mqtt_client.h"
 
-// #include "bme280.h"
-#include "bmp280.h"
-#include "driver/gpio.h"
-#include "driver/i2c.h"
+#include <stdio.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_system.h>
+#include <bmp280.h>
+#include <string.h>
+
+#define SDA_GPIO 21
+#define SCL_GPIO 22
 
 /* Set the SSID and Password via project configuration, or can set directly here */
 #define DEFAULT_SSID "MGTS_GPON_39F0"
@@ -176,83 +181,6 @@ static void wifi_connect_blocking(void)
     xEventGroupWaitBits(s_connect_event_group, WIFI_CONNECTED_BITS, true, true, portMAX_DELAY);
 }
 
-
-void i2c_master_init()
-{
-	i2c_config_t i2c_config = {
-		.mode = I2C_MODE_MASTER,
-		.sda_io_num = SDA_PIN,
-		.scl_io_num = SCL_PIN,
-		.sda_pullup_en = GPIO_PULLUP_ENABLE,
-		.scl_pullup_en = GPIO_PULLUP_ENABLE,
-		.master.clk_speed = 1000000
-	};
-	ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_config));
-	ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
-}
-
-s8_t BME280_I2C_bus_write(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u16_t cnt)
-{
-	s32_t iError = 0;
-
-	esp_err_t espRc;
-	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-
-	i2c_master_start(cmd);
-	i2c_master_write_byte(cmd, (dev_addr << 1) | I2C_MASTER_WRITE, true);
-
-	i2c_master_write_byte(cmd, reg_addr, true);
-	i2c_master_write(cmd, reg_data, cnt, true);
-	i2c_master_stop(cmd);
-
-	espRc = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10 / portTICK_PERIOD_MS);
-	if (espRc == ESP_OK) {
-		iError = 0;
-	} else {
-		iError = 1;
-	}
-	i2c_cmd_link_delete(cmd);
-
-	return (s8_t)iError;
-}
-
-s8_t BME280_I2C_bus_read(u8_t dev_addr, u8_t reg_addr, u8_t *reg_data, u16_t cnt)
-{
-	s32_t iError = 0;
-	esp_err_t espRc;
-
-	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-
-	i2c_master_start(cmd);
-	i2c_master_write_byte(cmd, (dev_addr << 1) | I2C_MASTER_WRITE, true);
-	i2c_master_write_byte(cmd, reg_addr, true);
-
-	i2c_master_start(cmd);
-	i2c_master_write_byte(cmd, (dev_addr << 1) | I2C_MASTER_READ, true);
-
-	if (cnt > 1) {
-		i2c_master_read(cmd, reg_data, cnt-1, I2C_MASTER_ACK);
-	}
-	i2c_master_read_byte(cmd, reg_data+cnt-1, I2C_MASTER_NACK);
-	i2c_master_stop(cmd);
-
-	espRc = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10 / portTICK_PERIOD_MS);
-	if (espRc == ESP_OK) {
-		iError = 0;
-	} else {
-		iError = 1;
-	}
-
-	i2c_cmd_link_delete(cmd);
-
-	return (s8_t)iError;
-}
-
-void BME280_delay_msek(u32_t msek)
-{
-	vTaskDelay(msek / portTICK_PERIOD_MS);
-}
-
 /*
 void task_bme280_normal_mode(void *ignore)
 {
@@ -394,116 +322,40 @@ void task_bme280_normal_mode(void *ignore)
 // }
 
 
-/*!
- *  @brief Prints the execution status of the APIs.
- *
- *  @param[in] api_name : name of the API whose execution status has to be printed.
- *  @param[in] rslt     : error code returned by the API whose execution status has to be printed.
- *
- *  @return void.
- */
-void print_rslt(const char api_name[], int8_t rslt)
+void bmp280_test(void *pvParamters)
 {
-    if (rslt != BMP280_OK)
-    {
-        printf("%s\t", api_name);
-        if (rslt == BMP280_E_NULL_PTR)
-        {
-            printf("Error [%d] : Null pointer error\r\n", rslt);
-        }
-        else if (rslt == BMP280_E_COMM_FAIL)
-        {
-            printf("Error [%d] : Bus communication failed\r\n", rslt);
-        }
-        else if (rslt == BMP280_E_IMPLAUS_TEMP)
-        {
-            printf("Error [%d] : Invalid Temperature\r\n", rslt);
-        }
-        else if (rslt == BMP280_E_DEV_NOT_FOUND)
-        {
-            printf("Error [%d] : Device not found\r\n", rslt);
-        }
-        else
-        {
-            /* For more error codes refer "*_defs.h" */
-            printf("Error [%d] : Unknown error code\r\n", rslt);
-        }
-    }
-}
+    bmp280_params_t params;
+    bmp280_init_default_params(&params);
+    bmp280_t dev;
+    memset(&dev, 0, sizeof(bmp280_t));
 
-void stream_sensor_data() {
-	int8_t rslt;
-    struct bmp280_dev bmp;
-    struct bmp280_config conf;
-    struct bmp280_uncomp_data ucomp_data;
-    int32_t temp32;
-    double temp;
+    ESP_ERROR_CHECK(bmp280_init_desc(&dev, BMP280_I2C_ADDRESS_0, 0, SDA_GPIO, SCL_GPIO));
+    ESP_ERROR_CHECK(bmp280_init(&dev, &params));
 
-    /* Map the delay function pointer with the function responsible for implementing the delay */
-    bmp.delay_ms = BME280_delay_msek;
+    bool bme280p = dev.id == BME280_CHIP_ID;
+    printf("BMP280: found %s\n", bme280p ? "BME280" : "BMP280");
 
-    /* Assign device I2C address based on the status of SDO pin (GND for PRIMARY(0x76) & VDD for SECONDARY(0x77)) */
-    bmp.dev_id = BMP280_I2C_ADDR_PRIM;
+    float pressure, temperature, humidity;
 
-    /* Select the interface mode as I2C */
-    bmp.intf = BMP280_I2C_INTF;
-
-    /* Map the I2C read & write function pointer with the functions responsible for I2C bus transfer */
-    bmp.read = BME280_I2C_bus_read;
-    bmp.write = BME280_I2C_bus_write;
-
-    /* To enable SPI interface: comment the above 4 lines and uncomment the below 4 lines */
-
-    /*
-     * bmp.dev_id = 0;
-     * bmp.read = spi_reg_read;
-     * bmp.write = spi_reg_write;
-     * bmp.intf = BMP280_SPI_INTF;
-     */
-    rslt = bmp280_init(&bmp);
-    print_rslt(" bmp280_init status", rslt);
-
-    /* Always read the current settings before writing, especially when
-     * all the configuration is not modified
-     */
-    rslt = bmp280_get_config(&conf, &bmp);
-    print_rslt(" bmp280_get_config status", rslt);
-
-    /* configuring the temperature oversampling, filter coefficient and output data rate */
-    /* Overwrite the desired settings */
-    conf.filter = BMP280_FILTER_COEFF_2;
-
-    /* Temperature oversampling set at 4x */
-    conf.os_temp = BMP280_OS_4X;
-
-    /* Pressure over sampling none (disabling pressure measurement) */
-    conf.os_pres = BMP280_OS_NONE;
-
-    /* Setting the output data rate as 1HZ(1000ms) */
-    conf.odr = BMP280_ODR_1000_MS;
-    rslt = bmp280_set_config(&conf, &bmp);
-    print_rslt(" bmp280_set_config status", rslt);
-
-    /* Always set the power mode after setting the configuration */
-    rslt = bmp280_set_power_mode(BMP280_NORMAL_MODE, &bmp);
-    print_rslt(" bmp280_set_power_mode status", rslt);
     while (1)
     {
-        /* Reading the raw data from sensor */
-        rslt = bmp280_get_uncomp_data(&ucomp_data, &bmp);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        if (bmp280_read_float(&dev, &temperature, &pressure, &humidity) != ESP_OK)
+        {
+            printf("Temperature/pressure reading failed\n");
+            continue;
+        }
 
-        /* Getting the 32 bit compensated temperature */
-        rslt = bmp280_get_comp_temp_32bit(&temp32, ucomp_data.uncomp_temp, &bmp);
-
-        /* Getting the compensated temperature as floating point value */
-        rslt = bmp280_get_comp_temp_double(&temp, ucomp_data.uncomp_temp, &bmp);
-        printf("UT: %d, T32: %d, T: %f \r\n", ucomp_data.uncomp_temp, temp32, temp);
-
-        /* Sleep time between measurements = BMP280_ODR_1000_MS */
-        bmp.delay_ms(1000);
+        /* float is used in printf(). you need non-default configuration in
+         * sdkconfig for ESP8266, which is enabled by default for this
+         * example. see sdkconfig.defaults.esp8266
+         */
+        printf("Pressure: %.2f Pa, Temperature: %.2f C", pressure, temperature);
+        if (bme280p)
+            printf(", Humidity: %.2f\n", humidity);
+        else
+            printf("\n");
     }
-
-	vTaskDelete(NULL);
 }
 
 void task_i2cscanner(void *ignore) {
@@ -558,10 +410,7 @@ void app_main()
     // wifi_connect_blocking();
     // mqtt_app_start();
 
-	i2c_master_init();
-
-
-	TaskHandle_t xHandle = NULL;
-	xTaskCreate(stream_sensor_data, "stream_sensor_data", 2048, NULL, 6, &xHandle);
+	ESP_ERROR_CHECK(i2cdev_init());
+	xTaskCreatePinnedToCore(bmp280_test, "bmp280_test", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL, APP_CPU_NUM);
 	// xTaskCreate(task_i2cscanner, "i2c_scanner", 2048, NULL, 6, NULL);
 }
