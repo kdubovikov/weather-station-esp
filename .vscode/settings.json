@@ -7,6 +7,10 @@
         "queue": "c",
         "stack": "c",
         "random": "c",
-        "sys.h": "c"
+        "sys.h": "c",
+        "gpio.h": "c",
+        "i2c.h": "c",
+        "freertos.h": "c",
+        "bme280.h": "c"
     }
 }
