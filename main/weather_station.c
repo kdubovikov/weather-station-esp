@@ -81,10 +81,19 @@
 static const char *TAG = "weather_station";
 static EventGroupHandle_t s_connect_event_group;
 
-static void create_weather_msg(char* msg, float temp, float pressure, float altitude, float humidity) {
+QueueHandle_t queue = NULL;
+const TickType_t xQueueBlockTime = pdMS_TO_TICKS( 200 );
+
+struct WeatherMessage {
+    float temperature;
+    float pressure;
+    float humidity;
+};
+
+static void create_weather_msg(char* msg, struct WeatherMessage* msg_struct) {
     sprintf(msg, 
             "{\"temp\":%.2f,\"pressure\":%.2f,\"altitude\":%.2f,\"humidity\":%.2f}", 
-            temp, pressure, altitude, humidity);
+            msg_struct->temperature, msg_struct->pressure, 0.0, msg_struct->humidity);
 }
 
 // MQTT
@@ -95,16 +104,25 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            char msg[90];
-            create_weather_msg(msg, 0., 1., 2., 3.);
-            ESP_LOGI(TAG, "Sending message: %s", msg);
-            msg_id = esp_mqtt_client_publish(client, "weather", msg, 0, 1, 0);
-            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
 
-            const float SLEEP_TIME = 2 * 1e6;
-            ESP_LOGI(TAG, "going to deep sleep for %.1f", SLEEP_TIME / 1e6);
-            ESP_ERROR_CHECK(esp_wifi_stop());
-            esp_deep_sleep(SLEEP_TIME);
+
+            if (queue != 0) {
+                ESP_LOGI(TAG, "Recieving message from the queue");
+                struct WeatherMessage msg;
+                if (xQueueReceive(queue, &(msg), pdMS_TO_TICKS(1000))) {
+                    ESP_LOGI(TAG, "Got new message from the queue");
+                    char json_msg[90];
+                    create_weather_msg(json_msg, &msg);
+                    ESP_LOGI(TAG, "Sending JSON message: %s", json_msg);
+                    msg_id = esp_mqtt_client_publish(client, "weather", json_msg, 0, 1, 0);
+                    ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+
+                    const float SLEEP_TIME = 2 * 1e6;
+                    ESP_LOGI(TAG, "going to deep sleep for %.1f", SLEEP_TIME / 1e6);
+                    ESP_ERROR_CHECK(esp_wifi_stop());
+                    esp_deep_sleep(SLEEP_TIME);
+                }
+            }
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -181,149 +199,7 @@ static void wifi_connect_blocking(void)
     xEventGroupWaitBits(s_connect_event_group, WIFI_CONNECTED_BITS, true, true, portMAX_DELAY);
 }
 
-/*
-void task_bme280_normal_mode(void *ignore)
-{
-	struct bme280_t bme280 = {
-		.bus_write = BME280_I2C_bus_write,
-		.bus_read = BME280_I2C_bus_read,
-		.dev_addr = BME280_I2C_ADDRESS2,
-		.delay_msec = BME280_delay_msek
-	};
-
-	s32_t com_rslt;
-	s32_t v_uncomp_pressure_s32;
-	s32_t v_uncomp_temperature_s32;
-	s32_t v_uncomp_humidity_s32;
-
-	com_rslt = bme280_init(&bme280);
-
-	com_rslt += bme280_set_oversamp_pressure(BME280_OVERSAMP_16X);
-	com_rslt += bme280_set_oversamp_temperature(BME280_OVERSAMP_2X);
-	com_rslt += bme280_set_oversamp_humidity(BME280_OVERSAMP_1X);
-
-	com_rslt += bme280_set_standby_durn(BME280_STANDBY_TIME_1_MS);
-	com_rslt += bme280_set_filter(BME280_FILTER_COEFF_16);
-
-	com_rslt += bme280_set_power_mode(BME280_NORMAL_MODE);
-	if (com_rslt == SUCCESS) {
-		while(true) {
-			vTaskDelay(40 / portTICK_PERIOD_MS);
-
-			com_rslt = bme280_read_uncomp_pressure_temperature_humidity(
-				&v_uncomp_pressure_s32, &v_uncomp_temperature_s32, &v_uncomp_humidity_s32);
-
-			if (com_rslt == SUCCESS) {
-				ESP_LOGI(TAG_BME280, "%.2f degC / %.3f hPa / %.3f %%",
-					bme280_compensate_temperature_double(v_uncomp_temperature_s32),
-					bme280_compensate_pressure_double(v_uncomp_pressure_s32)/100, // Pa -> hPa
-					bme280_compensate_humidity_double(v_uncomp_humidity_s32));
-			} else {
-				ESP_LOGE(TAG_BME280, "measure error. code: %d", com_rslt);
-			}
-		}
-	} else {
-		ESP_LOGE(TAG_BME280, "init or setting error. code: %d", com_rslt);
-	}
-
-	vTaskDelete(NULL);
-}
-*/
-// void print_sensor_data(struct bme80_data *comp_data) {
-// #ifdef BME280_FLOAT_ENABLE
-//         printf("FLOAT %0.2f, %0.2f, %0.2f\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
-// #else
-//         printf("INT %ld, %ld, %ld\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
-// #endif
-// }
-
-// void stream_sensor_data_normal_mode() {
-// 	struct bme280_dev dev;
-// 	int8_t rslt = BME280_OK;
-
-// 	dev.dev_id = BME280_I2C_ADDR_PRIM;
-// 	dev.intf = BME280_I2C_INTF;
-// 	dev.read = BME280_I2C_bus_read;
-// 	dev.write = BME280_I2C_bus_write;
-// 	dev.delay_ms = BME280_delay_msek;
-
-// 	rslt = bme280_init(&dev);
-
-// 	uint8_t settings_sel;
-// 	struct bme280_data comp_data;
-
-// 	/* Recommended mode of operation: Indoor navigation */
-// 	dev.settings.osr_h = BME280_OVERSAMPLING_1X;
-// 	dev.settings.osr_p = BME280_OVERSAMPLING_16X;
-// 	dev.settings.osr_t = BME280_OVERSAMPLING_2X;
-// 	dev.settings.filter = BME280_FILTER_COEFF_16;
-// 	dev.settings.standby_time = BME280_STANDBY_TIME_1000_MS;
-
-// 	settings_sel = BME280_OSR_PRESS_SEL;
-// 	settings_sel |= BME280_OSR_TEMP_SEL;
-// 	settings_sel |= BME280_OSR_HUM_SEL;
-// 	settings_sel |= BME280_STANDBY_SEL;
-// 	settings_sel |= BME280_FILTER_SEL;
-// 	rslt = bme280_set_sensor_settings(settings_sel, &dev);
-// 	rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, &dev);
-
-// 	printf("Temperature, Pressure, Humidity\r\n");
-// 	while (1) {
-// 		/* Delay while the sensor completes a measurement */
-// 		dev.delay_ms(10);
-// 		rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, &dev);
-// 		print_sensor_data(&comp_data);
-// 	}
-
-// 	vTaskDelete(NULL);
-// }
-
-// void stream_sensor_data_forced_mode()
-// {
-// 	struct bme280_dev dev;
-// 	int8_t rslt = BME280_OK;
-
-// 	dev.dev_id = BME280_I2C_ADDR_PRIM;
-// 	dev.intf = BME280_I2C_INTF;
-// 	dev.read = BME280_I2C_bus_read;
-// 	dev.write = BME280_I2C_bus_write;
-// 	dev.delay_ms = BME280_delay_msek;
-
-// 	rslt = bme280_init(&dev);
-//     uint8_t settings_sel;
-// 	uint32_t req_delay;
-//     struct bme280_data comp_data;
-
-//     /* Recommended mode of operation: Indoor navigation */
-//     dev.settings.osr_h = BME280_OVERSAMPLING_1X;
-//     dev.settings.osr_p = BME280_OVERSAMPLING_16X;
-//     dev.settings.osr_t = BME280_OVERSAMPLING_2X;
-//     dev.settings.filter = BME280_FILTER_COEFF_16;
-
-//     settings_sel = BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_FILTER_SEL;
-
-//     rslt = bme280_set_sensor_settings(settings_sel, &dev);
-	
-// 	/*Calculate the minimum delay required between consecutive measurement based upon the sensor enabled
-//      *  and the oversampling configuration. */
-//     req_delay = bme280_cal_meas_delay(&dev.settings);
-
-//     printf("Temperature, Pressure, Humidity\r\n");
-//     /* Continuously stream sensor data */
-//     while (1) {
-//         rslt = bme280_set_sensor_mode(BME280_FORCED_MODE, &dev);
-//         /* Wait for the measurement to complete and print data @25Hz */
-//         dev.delay_ms(req_delay);
-//         rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, &dev);
-//         print_sensor_data(&comp_data);
-//     }
-
-// 	vTaskDelete(NULL);
-// }
-
-
-void bmp280_test(void *pvParamters)
-{
+void bmp280_collect_data(void *pvParamters) {
     bmp280_params_t params;
     bmp280_init_default_params(&params);
     bmp280_t dev;
@@ -337,25 +213,21 @@ void bmp280_test(void *pvParamters)
 
     float pressure, temperature, humidity;
 
-    while (1)
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    if (bmp280_read_float(&dev, &temperature, &pressure, &humidity) != ESP_OK)
     {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        if (bmp280_read_float(&dev, &temperature, &pressure, &humidity) != ESP_OK)
-        {
-            printf("Temperature/pressure reading failed\n");
-            continue;
-        }
-
-        /* float is used in printf(). you need non-default configuration in
-         * sdkconfig for ESP8266, which is enabled by default for this
-         * example. see sdkconfig.defaults.esp8266
-         */
-        printf("Pressure: %.2f Pa, Temperature: %.2f C", pressure, temperature);
-        if (bme280p)
-            printf(", Humidity: %.2f\n", humidity);
-        else
-            printf("\n");
+       ESP_LOGI(TAG, "Temperature/pressure reading failed\n");
     }
+    else {
+        struct WeatherMessage msg;
+        msg.temperature = temperature;
+        msg.humidity = humidity;
+        msg.pressure = pressure;
+        ESP_LOGI(TAG, "Sending WeatherMessage to queue: %f %f %f\n", msg.temperature, msg.pressure, msg.humidity);
+
+        xQueueSendToFront(queue, (void*) &msg, xQueueBlockTime);
+    }
+    vTaskDelete(NULL);
 }
 
 void task_i2cscanner(void *ignore) {
@@ -397,8 +269,11 @@ void task_i2cscanner(void *ignore) {
 	vTaskDelete(NULL);
 }
 
-void app_main()
-{
+void app_main() {
+    queue = xQueueCreate(2, sizeof(struct WeatherMessage));
+	ESP_ERROR_CHECK(i2cdev_init());
+    xTaskCreatePinnedToCore(bmp280_collect_data, "bmp280_collect_data", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL, APP_CPU_NUM);
+
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -407,10 +282,6 @@ void app_main()
     }
     ESP_ERROR_CHECK( ret );
 
-    // wifi_connect_blocking();
-    // mqtt_app_start();
-
-	ESP_ERROR_CHECK(i2cdev_init());
-	xTaskCreatePinnedToCore(bmp280_test, "bmp280_test", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL, APP_CPU_NUM);
-	// xTaskCreate(task_i2cscanner, "i2c_scanner", 2048, NULL, 6, NULL);
+    wifi_connect_blocking();
+    mqtt_app_start();
 }
