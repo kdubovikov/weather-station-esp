@@ -1,16 +1,16 @@
-menu "Example Configuration"
+menu "Application Configuration"
 
     config BROKER_URL
         string "MQTT broker URL"
         default "192.168.1.2:1883"
 
-    config EXAMPLE_WIFI_SSID
+    config WIFI_SSID
         string "WiFi SSID"
         default "myssid"
         help
             SSID (network name) for the example to connect to.
 
-    config EXAMPLE_WIFI_PASSWORD
+    config WIFI_PASSWORD
         string "WiFi Password"
         default "mypassword"
         help

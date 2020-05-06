@@ -11,6 +11,16 @@
         "gpio.h": "c",
         "i2c.h": "c",
         "freertos.h": "c",
-        "bme280.h": "c"
+        "bme280.h": "c",
+        "esp_err.h": "c",
+        "sensor.h": "c",
+        "weather_station.h": "c",
+        "event_groups.h": "c",
+        "task.h": "c",
+        "stdio.h": "c",
+        "mqtt.h": "c",
+        "__bit_reference": "c",
+        "__string": "c",
+        "*.ipp": "c"
     }
 }
