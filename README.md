@@ -2,7 +2,7 @@
 This is a part of ESP32 Weather Station project that contains firmware for ESP32.
 
 ## Companion blog post
-The inner workings of the source code is throughly explained in a companion blog post.
+The inner workings of the source code are throughly explained in a companion blog post.
 
 ## Installation
 ```
